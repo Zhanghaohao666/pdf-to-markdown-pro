@@ -1,0 +1,4 @@
+interface:
+  display_name: "PDF to Markdown Pro"
+  short_description: "Fast, accurate PDF to Markdown routing"
+  default_prompt: "Use $pdf-to-markdown-pro to convert this PDF into clean Markdown."
