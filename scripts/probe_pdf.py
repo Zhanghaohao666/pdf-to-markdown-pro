@@ -17,7 +17,6 @@ PY_ENGINES = {
     "markitdown": "markitdown",
     "docling": "docling",
     "pypdf": "pypdf",
-    "marker": "marker",
 }
 
 CLI_ENGINES = {
@@ -127,7 +126,7 @@ def choose_hint(info: dict, engines: dict[str, bool | str | None]) -> str:
             return "cjk_or_ocr_mineru"
         if engines.get("docling"):
             return "cjk_or_ocr_docling"
-        if engines.get("marker") or engines.get("marker_single"):
+        if engines.get("marker_single"):
             return "cjk_or_ocr_marker"
     if engines.get("pymupdf4llm"):
         return "fast_pymupdf4llm"

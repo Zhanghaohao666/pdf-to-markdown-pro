@@ -214,11 +214,11 @@ Page numbers are 1-based.
 
 | Mode | Best for | Route |
 |---|---|---|
-| `fast` | Native text PDFs | PyMuPDF4LLM, MarkItDown, pypdf |
-| `accurate` | Layout, tables, multi-column PDFs | Docling, Marker, PyMuPDF4LLM |
-| `ocr` | Scanned or image-heavy PDFs | MinerU, Marker, Docling, PyMuPDF4LLM |
-| `cjk` | Chinese/Japanese/Korean PDFs | MinerU, Docling, Marker, PyMuPDF4LLM |
-| `auto` | General use | Probes the PDF and chooses a route |
+| `fast` | Native text PDFs | PyMuPDF4LLM, MarkItDown, pypdf, Docling |
+| `accurate` | Layout, tables, multi-column PDFs | Docling, Marker, PyMuPDF4LLM, MarkItDown, pypdf |
+| `ocr` | Scanned or image-heavy PDFs | MinerU, Marker, Docling, PyMuPDF4LLM, MarkItDown, pypdf |
+| `cjk` | Chinese/Japanese/Korean PDFs | MinerU, Docling, Marker, PyMuPDF4LLM, MarkItDown, pypdf |
+| `auto` | General use | Probes the PDF, then picks `cjk`/`accurate`/`fast` |
 
 ## Reports
 

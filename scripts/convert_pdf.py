@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -17,10 +18,9 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
 try:
-    from probe_pdf import build_report, engine_status
+    from probe_pdf import build_report
 except Exception:
     build_report = None  # type: ignore
-    engine_status = None  # type: ignore
 
 
 INSTALL_HINTS = {
@@ -48,15 +48,20 @@ def parse_pages(spec: str | None) -> list[int] | None:
             continue
         if "-" in item:
             start_raw, end_raw = item.split("-", 1)
-            start = int(start_raw)
-            end = int(end_raw)
+            try:
+                start, end = int(start_raw), int(end_raw)
+            except ValueError:
+                raise ValueError(f"Invalid page range: {item!r}")
             if start < 1 or end < start:
-                raise ValueError(f"Invalid page range: {item}")
+                raise ValueError(f"Invalid page range: {item!r}")
             pages.update(range(start - 1, end))
         else:
-            page = int(item)
+            try:
+                page = int(item)
+            except ValueError:
+                raise ValueError(f"Invalid page number: {item!r}")
             if page < 1:
-                raise ValueError(f"Invalid page number: {item}")
+                raise ValueError(f"Invalid page number: {item!r}")
             pages.add(page - 1)
     return sorted(pages)
 
@@ -95,7 +100,9 @@ def markdown_ok(text: str) -> bool:
 def resolve_image_path(raw_path: str, markdown_path: Path) -> Path:
     cleaned = raw_path.strip().strip('"').strip("'")
     if cleaned.startswith("file://"):
-        cleaned = cleaned[7:]
+        from urllib.parse import unquote, urlparse
+        from urllib.request import url2pathname
+        cleaned = url2pathname(unquote(urlparse(cleaned).path))
     path = Path(cleaned)
     if not path.is_absolute():
         path = markdown_path.parent / path
@@ -157,7 +164,20 @@ def ocr_with_easyocr(image_path: Path, min_confidence: float) -> tuple[str, str]
 def ocr_with_tesseract(image_path: Path, min_confidence: float) -> tuple[str, str]:
     import pytesseract  # type: ignore
 
-    text = pytesseract.image_to_string(str(image_path), lang="chi_sim+eng")
+    data = pytesseract.image_to_data(str(image_path), lang="chi_sim+eng", output_type=pytesseract.Output.DICT)
+    lines: dict[tuple, list[str]] = {}
+    for i, word in enumerate(data["text"]):
+        word = word.strip()
+        if not word:
+            continue
+        try:
+            conf = float(data["conf"][i])
+        except (TypeError, ValueError):
+            conf = -1.0
+        if conf >= min_confidence * 100:
+            key = (data["block_num"][i], data["par_num"][i], data["line_num"][i])
+            lines.setdefault(key, []).append(word)
+    text = "\n".join(" ".join(lines[key]) for key in sorted(lines))
     return text.strip(), "tesseract"
 
 
@@ -182,10 +202,12 @@ def ocr_image(image_path: Path, engine: str, min_confidence: float) -> tuple[str
 
 
 def format_ocr_text(text: str, image_label: str, pure_text: bool) -> list[str]:
-    if not text.strip():
-        return [f"[Image OCR: no text recognized in {image_label}]"] if pure_text else []
-    header = f"[Image OCR: {image_label}]"
-    return [header, text.strip()]
+    body = text.strip()
+    if not body:
+        return [f"> *[Image OCR] no text recognized in {image_label}*"] if pure_text else []
+    block = [f"> *[Image OCR] {image_label}*", ">"]
+    block += [f"> {ln}" if ln.strip() else ">" for ln in body.splitlines()]
+    return block
 
 
 def extract_pdf_images(pdf: Path, image_dir: Path, pages: list[int] | None) -> list[Path]:
@@ -228,6 +250,7 @@ def postprocess_image_ocr(
     lines = original.splitlines()
     processed: list[str] = []
     image_refs = 0
+    images_found = 0
     ocr_items: list[dict] = []
 
     for line in lines:
@@ -241,6 +264,7 @@ def postprocess_image_ocr(
         if not pure_text:
             processed.append(line)
         if image_path.exists() and ocr_engine != "none":
+            images_found += 1
             text, used_engine, error = ocr_image(image_path, ocr_engine, min_confidence)
         else:
             text, used_engine, error = "", "none", "image not found or OCR disabled"
@@ -258,7 +282,7 @@ def postprocess_image_ocr(
             "error": error,
         })
 
-    if image_refs == 0 and ocr_engine != "none":
+    if images_found == 0 and ocr_engine != "none":
         image_dir = markdown_path.with_suffix("")
         image_dir = image_dir.parent / f"{image_dir.name}_images"
         extracted = extract_pdf_images(pdf, image_dir, pages)
@@ -269,7 +293,7 @@ def postprocess_image_ocr(
             processed.append("")
         for image_path in extracted:
             text, used_engine, error = ocr_image(image_path, ocr_engine, min_confidence)
-            block = format_ocr_text(text, image_path.name, pure_text=True)
+            block = format_ocr_text(text, image_path.name, pure_text)
             processed.extend(block)
             processed.append("")
             ocr_items.append({
@@ -287,6 +311,7 @@ def postprocess_image_ocr(
         "pure_text": pure_text,
         "ocr_engine_requested": ocr_engine,
         "image_links_seen": image_refs,
+        "images_found_on_disk": images_found,
         "items": ocr_items,
         "output_chars": len(result),
     }
@@ -314,7 +339,11 @@ def convert_pymupdf4llm(pdf: Path, output: Path, pages: list[int] | None, images
     except Exception as exc:
         if not hasattr(pymupdf4llm, "use_layout"):
             raise
-        warnings.append(f"Retried PyMuPDF4LLM in legacy non-layout mode after {type(exc).__name__}: {exc}")
+        warnings.append(
+            f"PyMuPDF4LLM layout mode failed ({type(exc).__name__}: {exc}); retried without layout, "
+            "so tables and reading order may be degraded. If this is an OCR init error, install Tesseract "
+            "language data or set TESSDATA_PREFIX (or install rapidocr-onnxruntime)."
+        )
         pymupdf4llm.use_layout(False)
         retry_kwargs = {k: v for k, v in kwargs.items() if k != "force_ocr"}
         md = pymupdf4llm.to_markdown(str(pdf), **retry_kwargs)
@@ -369,6 +398,32 @@ def convert_pypdf(pdf: Path, output: Path, pages: list[int] | None, images: bool
     return md, warnings
 
 
+_IMG_LINK_RE = re.compile(r"!\[([^\]]*)\]\(\s*([^)\s]+)([^)]*)\)")
+
+
+def persist_cli_assets(md: str, src_dir: Path, output: Path) -> str:
+    """Copy engine-produced image assets out of the temp dir and repoint relative links."""
+    assets_dir = output.parent / f"{output.stem}_images"
+
+    def repl(match: re.Match) -> str:
+        target = match.group(2)
+        if target.startswith(("http://", "https://", "file:", "data:", "/")) or (len(target) > 1 and target[1] == ":"):
+            return match.group(0)
+        src = src_dir / target
+        try:
+            rel = src.resolve().relative_to(src_dir.resolve())
+        except (ValueError, OSError):
+            return match.group(0)
+        if not src.is_file():
+            return match.group(0)
+        dest = assets_dir / rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dest)
+        return f"![{match.group(1)}]({output.stem}_images/{rel.as_posix()}{match.group(3)})"
+
+    return _IMG_LINK_RE.sub(repl, md)
+
+
 def run_cli_engine(command: list[str], output: Path, label: str) -> tuple[str, list[str]]:
     with tempfile.TemporaryDirectory(prefix=f"{label}-pdf-md-") as tmp:
         command = [part.replace("{tmp}", tmp) for part in command]
@@ -379,7 +434,8 @@ def run_cli_engine(command: list[str], output: Path, label: str) -> tuple[str, l
         md_files = sorted(tmp_path.rglob("*.md"), key=lambda p: p.stat().st_size, reverse=True)
         if not md_files:
             raise RuntimeError(f"{label} completed but produced no Markdown file.")
-        md = md_files[0].read_text(encoding="utf-8", errors="replace")
+        chosen = md_files[0]
+        md = persist_cli_assets(chosen.read_text(encoding="utf-8", errors="replace"), chosen.parent, output)
         write_text(output, md)
         warnings = []
         if proc.stderr.strip():
@@ -439,7 +495,7 @@ def available() -> dict[str, bool]:
     }
 
 
-def route_for_mode(mode: str, probe: dict | None, engines: dict[str, bool]) -> list[str]:
+def route_for_mode(mode: str, probe: dict | None) -> list[str]:
     routes = {
         "fast": ["pymupdf4llm", "markitdown", "pypdf", "docling"],
         "accurate": ["docling", "marker", "pymupdf4llm", "markitdown", "pypdf"],
@@ -475,7 +531,8 @@ def main() -> int:
     parser.add_argument("--ocr-engine", choices=["auto", "rapidocr", "tesseract", "easyocr", "none"], default="auto")
     parser.add_argument("--ocr-min-confidence", type=float, default=0.45, help="Minimum OCR confidence for engines that expose scores")
     parser.add_argument("--report", help="Output JSON report path")
-    parser.add_argument("--keep-going", action="store_true", default=True, help="Try fallback engines on failure")
+    parser.add_argument("--keep-going", action=argparse.BooleanOptionalAction, default=True,
+                        help="Try fallback engines on failure (use --no-keep-going to stop on first error)")
     args = parser.parse_args()
 
     pdf = Path(args.pdf).expanduser().resolve()
@@ -487,7 +544,7 @@ def main() -> int:
     pages = parse_pages(args.pages)
     engines = available()
     probe = build_report(pdf, 5) if build_report else None
-    route = route_for_mode(args.mode, probe, engines)
+    route = route_for_mode(args.mode, probe)
     extract_images = args.images or args.ocr_images or args.pure_text
     attempts: list[dict] = []
     selected = None

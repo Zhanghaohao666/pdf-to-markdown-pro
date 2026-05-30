@@ -41,11 +41,11 @@ If the input PDF is in a volatile temp/cache path such as WeChat `RWTemp` or sys
 
 Use `--mode auto` unless the user asks for a specific tradeoff.
 
-- `fast`: native-text PDFs. Tries PyMuPDF4LLM, MarkItDown, then pypdf.
+- `fast`: native-text PDFs. Tries PyMuPDF4LLM, MarkItDown, pypdf, then Docling.
 - `accurate`: layout, tables, multi-column, document structure. Tries Docling, Marker, PyMuPDF4LLM, MarkItDown, then pypdf.
-- `ocr`: scanned or image-heavy PDFs. Tries MinerU, Marker with OCR, Docling, PyMuPDF4LLM OCR, then MarkItDown.
-- `cjk`: Chinese/Japanese/Korean PDFs, scanned papers, formulas, dense tables. Tries MinerU first, then Docling/Marker/PyMuPDF4LLM.
-- `auto`: probes the PDF, then chooses a route based on selectable text, CJK ratio, image density, page count, and installed engines.
+- `ocr`: scanned or image-heavy PDFs. Tries MinerU, Marker, Docling, PyMuPDF4LLM, MarkItDown, then pypdf.
+- `cjk`: Chinese/Japanese/Korean PDFs, scanned papers, formulas, dense tables. Tries MinerU, Docling, Marker, PyMuPDF4LLM, MarkItDown, then pypdf.
+- `auto`: probes the PDF, then chooses the `cjk`, `accurate`, or `fast` route based on CJK ratio, image density, and selectable text.
 
 ## Dependency Policy
 

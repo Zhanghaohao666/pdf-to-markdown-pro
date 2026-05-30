@@ -1,0 +1,15 @@
+# Minimal runtime stack (recommended baseline)
+pymupdf
+pymupdf4llm
+markitdown[pdf]
+pypdf
+
+# Optional engines, install only when needed:
+#   pip install docling                          # accurate layout / tables
+#   pip install "mineru[all]"                     # heavy OCR / CJK (mineru CLI)
+#   pip install marker-pdf                        # marker_single CLI
+#
+# Optional embedded-image OCR:
+#   pip install rapidocr-onnxruntime pillow opencv-python
+#   pip install pytesseract                       # also needs the tesseract binary + language data
+#   pip install easyocr
