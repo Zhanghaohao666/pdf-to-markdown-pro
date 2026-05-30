@@ -214,11 +214,11 @@ python scripts/convert_pdf.py "document.pdf" --pages 1-3,7
 
 | 模式 | 适合场景 | 路由顺序 |
 |---|---|---|
-| `fast` | 普通文本型 PDF | PyMuPDF4LLM, MarkItDown, pypdf |
-| `accurate` | 复杂版面、表格、多栏 PDF | Docling, Marker, PyMuPDF4LLM |
-| `ocr` | 扫描件、图片较多的 PDF | MinerU, Marker, Docling, PyMuPDF4LLM |
-| `cjk` | 中文/日文/韩文 PDF | MinerU, Docling, Marker, PyMuPDF4LLM |
-| `auto` | 通用场景 | 先探测 PDF，再自动选择 |
+| `fast` | 普通文本型 PDF | PyMuPDF4LLM, MarkItDown, pypdf, Docling |
+| `accurate` | 复杂版面、表格、多栏 PDF | Docling, Marker, PyMuPDF4LLM, MarkItDown, pypdf |
+| `ocr` | 扫描件、图片较多的 PDF | MinerU, Marker, Docling, PyMuPDF4LLM, MarkItDown, pypdf |
+| `cjk` | 中文/日文/韩文 PDF | MinerU, Docling, Marker, PyMuPDF4LLM, MarkItDown, pypdf |
+| `auto` | 通用场景 | 先探测 PDF，再选择 `cjk`/`accurate`/`fast` |
 
 ## 转换报告
 
